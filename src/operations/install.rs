@@ -22,7 +22,7 @@ pub async fn install(package_query: &String) {
     let package = get_package(package_name.into()).await;
     println!("Found package '{}'", package_name);
 
-    let dependency_list = get_dependency_list(&package, version).await;
+    let dependency_list = get_dependency_list(&package, version, &mut -1).await;
     let mut progression = 0;
 
     for package in dependency_list.values() {
@@ -166,13 +166,21 @@ fn stringify_opt(opt: &Option<String>) -> String {
 }
 
 #[async_recursion]
-async fn get_dependency_list(package: &Package, version: Option<&'async_recursion str>) -> HashMap<String, PackageVersion> {
+async fn get_dependency_list(package: &Package, version: Option<&'async_recursion str>, depth: &mut i32) -> HashMap<String, PackageVersion> {
+    *depth += 1;
+
     let mut dependency_list: HashMap<String, PackageVersion> = HashMap::new();
     let version_data = get_version_data(package, version);
+    
+    if *depth == 0 {
+        dependency_list.insert(stringify_opt(&package.name), version_data.clone());
+    }
+
     println!("Searching dependencies for {}@{}", stringify_opt(&package.name), version_data.version);
 
     let mut dependencies: HashMap<String, String> = HashMap::new();
-    if let Some(deps) = version_data.dependencies {
+
+    if let Some(deps) = version_data.dependencies.clone() {
         dependencies.extend(deps);
     }
 
@@ -182,15 +190,14 @@ async fn get_dependency_list(package: &Package, version: Option<&'async_recursio
 
     for (package_name, version_raw) in dependencies {
         let dependency = get_package(package_name.clone()).await;
-        let version_data = get_version_data(&dependency, Some(version_raw.as_str()));
+        let v_data = get_version_data(&dependency, Some(version_raw.as_str()));
 
         if dependency_list.get_mut(&package_name).is_none() {
-            let list = get_dependency_list(&dependency, Some(version_data.version.as_str())).await;
-            dependency_list.insert(package_name.clone(), version_data);
+            let list = get_dependency_list(&dependency, Some(version_data.version.as_str()), depth).await;
+            dependency_list.insert(package_name.clone(), v_data);
             dependency_list.extend(list);
         }
     }
-
 
     dependency_list
 }
